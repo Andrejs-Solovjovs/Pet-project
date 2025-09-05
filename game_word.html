@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Русский Wordle</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background: #121213;
+      color: #ffffff;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1, h2 {
+      color: #d7dadc;
+    }
+
+    button {
+      margin: 10px;
+      padding: 12px 24px;
+      font-size: 1em;
+      background-color: #538d4e;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #6aaa64;
+    }
+
+    #board {
+      display: grid;
+      gap: 6px;
+      justify-content: center;
+      margin: 20px auto;
+    }
+
+    .row {
+      display: grid;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .cell {
+      width: 60px;
+      height: 60px;
+      border: 2px solid #3a3a3c;
+      text-transform: uppercase;
+      font-size: 2em;
+      text-align: center;
+      line-height: 60px;
+      font-weight: bold;
+      background-color: #121213;
+      color: white;
+      transition: background-color 0.3s ease, transform 0.3s ease;
+    }
+
+    .correct {
+      background-color: #538d4e;
+      border-color: #538d4e;
+      animation: bounce 0.4s;
+    }
+
+    .present {
+      background-color: #b59f3b;
+      border-color: #b59f3b;
+      animation: bounce 0.4s;
+    }
+
+    .absent {
+      background-color: #3a3a3c;
+      border-color: #3a3a3c;
+      animation: fadeIn 0.4s;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      font-size: 1em;
+      width: 200px;
+      text-align: center;
+      text-transform: uppercase;
+      margin-top: 10px;
+      background: #1a1a1b;
+      color: #fff;
+      border: 2px solid #3a3a3c;
+      border-radius: 6px;
+    }
+
+    #message {
+      margin-top: 10px;
+      font-size: 1.1em;
+      color: #ffffff;
+      min-height: 1.4em;
+    }
+
+    /* Панель очков и подсказок */
+    #scorebar {
+      margin: 8px auto 8px;
+      font-size: .95rem;
+      color: #9aa0a6;
+    }
+    #hintText {
+      margin-top: 6px;
+      color: #c7d5c8;
+      font-size: 0.95em;
+      min-height: 1.2em;
+    }
+    .badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #2b2c2e;
+      font-weight: 700;
+    }
+    .badge.plus { color:#9be28a; }
+    .badge.minus{ color:#ff8b8b; }
+
+    @keyframes bounce {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="menu">
+    <h1>Русский Wordle</h1>
+    <p>Выбери уровень сложности:</p>
+    <button onclick="startGame(4)">Легкий (4 буквы)</button>
+    <button onclick="startGame(5)">Средний (5 букв)</button>
+    <button onclick="startGame(6)">Сложный (6 букв)</button>
+  </div>
+
+  <div id="game" style="display: none;">
+    <h2 id="levelTitle"></h2>
+
+    <!-- Панель очков -->
+    <div id="scorebar">
+      Очки: <span id="scoreTotal">0</span> · Серия: <span id="scoreStreak">0</span>
+      · Побед: <span id="scoreWins">0</span> · Пораж.: <span id="scoreLosses">0</span>
+    </div>
+
+    <div id="board"></div>
+
+    <input type="text" id="guessInput" placeholder="Введите слово" autocomplete="off" />
+    <button onclick="submitGuess()">Проверить</button>
+    <button class="secondary" onclick="nextHint()">Подсказка +</button>
+    <div id="hintText"></div>
+
+    <div id="message"></div>
+    <button onclick="restartGame()">В меню</button>
+  </div>
+
+  <script>
+    /* ---------- словари ---------- */
+    const wordLists = {
+      4: [
+"абат","агат","азот","аист","айва","алоэ","анод","арба","арка","арфа","арык","атом","аура","ауты",
+"баба","бабы","база","банк","баня","бант","барс","батя","баши","беда","беду","беды","безе","бека",
+"билик","бита","бить","блаф","блик","блин","блог","блок","блюз","бобр","бока","боки","боку","бокс",
+"болт","боль","борт","борщ","брак","бред","брус","бряк","буер","буки","булы","бунт","бурт","буря",
+"бусы","быки","быль","быть",
+"ваза","вата","вево","веко","вена","вены","вера","верх","весь","весы","вече","вещь","виза","вино",
+"вины","винт","вира","вирт","висы","вить","вклад","внук","внят","вода","воды","воду","воде","вожд",
+"воза","вози","вожу","волк","воля","ворс","воск","вход","вкус","вьюн","вязь",
+"гага","гель","герб","герц","глаз","гляд","глот","гнев","гнет","гней","гном","гора","горе","горы",
+"горн","грам","гран","граф","грех","гриб","гром","груб","груз","гусь",
+"дама","дамы","дань","дата","даты","двор","дева","деда","деды","деду","дека","дела","деле","дело",
+"делу","дель","день","дерн","дети","джаз","джип","дзот","дива","диво","диод","диск","дичь","длан",
+"днев","доки","доля","долю","долы","дома","домы","дочь","драм","дрей","дрож","дрон","друг","дуба",
+"дубы","дуга","дуги","дугу","дума","думе","думу","думы","духи","душа","душе","души","душу","дыра",
+"дыру","дыры","дыня","дюна",
+"жаба","жало","жара","жгут","ждем","жечь","жест","жива","живу","живы","жила","жилы","жило","жить",
+"жнец","жуть",
+"загс","зала","залы","залп","зима","злак","злой","зола","золу","золы","зона","зонт","зрак","зубр",
+"зубы","зуде","зуду",
+"игла","игра","идея","идол","имам",
+"йога","йота","йоты",
+"кадр","каша","кедр","кекс","кета","кеты","кино","кипа","кипы","кисл","клад","клен","клик","клин",
+"клоп","клуб","ключ","клюв","клык","коза","козы","козу","кола","коле","колу","колы","кома","комы",
+"конь","кора","коры","кору","корж","коса","косы","косу","кост","коты","коту","кран","край","круг",
+"крут","куки","кули","купа","купе","купи","кура","куры","курт","курь","куст","куча","кучи","кучу",
+"лава","лавр","ладо","ладь","лапа","лапы","лапу","ларь","лары","лафа","лего","лень","леди","леса",
+"лесу","лесы","лесь","лета","лето","лету","лечу","лечи","липа","липы","лиру","лиры","лиса","лисы",
+"лицо","лица","лице","лицу","личи","лобз","лови","ловч","ложа","ложе","ложи","ложу","лоза","лось",
+"лото","лоты","луна","лупа","лупу","лупы","львы","льды","льду","люди",
+"мама","мамы","маму","мара","марс","мать","мгла","медь","межа","мель","меню","мера","мере","меру",
+"меры","мест","мета","метр","меты","меха","мехи","мечи","мечу","мина","миры","миро","мода","моде",
+"моду","моды","мозг","моль","море","морс","мост","моты","моча","мочи","мочу","мощь","мужи","муза",
+"мука","муки","мулы","мура","муры","муть","муха","мухи","мыли","мыла","мыло","мысл","мыть","мяты",
+"мячи","мячу",
+"нага","надо","наем","нога","ноги","норд","нора","норе","нору","норы","носа","носы","носу","нота",
+"ноты","ночь","нуль","няни","няня","няню",
+"обед","обет","обод","обои","овен","овца","овцы","овцу","огни","озон","окно","окна","окну","омар",
+"омут","опал","опыт","орда","орел","орла","орлы","орлу","осел","ослы","особ",
+"пава","пазл","пайп","пала","палы","паль","папа","папу","папы","парк","пары","пару","пара","парю",
+"паша","пасу","паче","пена","пену","пены","пень","перо","пиво","пика","пики","пила","пилы","пили",
+"пирс","писк","пища","план","плач","плот","плуг","плюс","пляж","плед","плен","плес","плит","плод",
+"плов","плут","поза","позу","позы","поем","поет","пока","поле","полк","полу","полы","поль","попа",
+"попы","пора","пору","поры","порт","пост","пояс","прад","прах","приз","пруд","прыж","птен","пуер",
+"пузо","пули","пулю","пуля","пунш","пуск","путь","пылю","пыль","пьян","пядь",
+"раба","рабы","рабу","ради","разу","рама","раму","рамы","рана","ранг","рану","раны","раса","расы",
+"ребр","рева","реву","режу","резь","рель","речь","рига","риза","риск","роба","рога","рогу","роды",
+"рожа","рожу","рожи","роза","розу","розы","роли","роль","ромб","руда","руды","руду","рука","руки",
+"руку","руна","руно","рунь","русы","рыба","рыби","рыбу","рыбы","рысь","рыть",
+"сало","сани","сайт","сари","сати","саха","свет","свод","свой","связ","сгон","сжим","сжат","сила",
+"силе","силу","сине","сито","скат","скин","скоб","скол","скоп","скот","скул","слаб","слой","слог",
+"слон","слух","смех","смог","смол","снег","сноп","снос","сова","сову","совы","соло","соль","сонм",
+"союз","спор","спис","срез","срок","сруб","срыв","стая","став","стог","сток","стол","стоп","стой",
+"стук","стул","суть","суши",
+"табу","тазы","тайм","такт","таль","танк","тара","тачк","твар","тело","тема","теме","тему","тень",
+"тест","течь","тигр","тина","типы","тише","тога","токи","тома","томы","тонк","тонн","топи","торг",
+"торф","торт","торс","тост","точь","трак","трам","трат","трек","трен","трет","трюк","трон","трюм",
+"труд","труп","трут","тула","тура","туча","туша","тылы","тылу",
+"угол","угон","удар","удел","ужин","узел","узлы","узор","уйма","укол","ульи","умно","умом","урна",
+"урны","урок","урон","усек","усик","усто","утес","утих","утка","утки","утро","уход","учет",
+"файл","факс","фаза","фара","фетр","форт","фото","фуга","фура","фуры",
+"хата","хват","хлеб","хлор","храм","хром","худо","хуже",
+"царь","цены","цена","цикл","цирк",
+"чадо","чаша","чаши","чашу","чаща","чаще","чета","чист","чуть",
+"шаль","шанс","шашк","швея","шило","шины","шить","шлак","шлем","шлюз","шрам","штык","шумн","шуба",
+"щепа","щука",
+"этаж","этап","этюд",
+"юнец","юрта","юнит",
+"ядро","язва","ямка","ярус","ясли","река"
+],
+      5: [
+"абзац","аборт","абрис","аванс","аврал","автор","агент","агрус","адепт","адрес","азарт",
+"актер","акула","акция","алмаз","аллея","алтай","альфа","амбар","амеба","ампер","амуры",
+"ангел","ангар","анонс","аргон","арена","арбуз","аркан","армия","архив","аршин","аскет","астра","атака","атлас","атомы",
+"аудио","афера","афиша","ахать",
+"базар","балет","балка","банка","банки","банты","баржа","барин","барон","барсы","басня","батон","батут","бахча","башня",
+"бегун","бедро","бекон","белка","белок","белье","берег","берет","берцы","берут","билет","биржа","бирка",
+"благо","бланк","блеск","блоки","блюдо","бобер","бокал","боксы","болид","болот","болты","бомба","борец","боров","борты","борщ",
+"бочок","брага","брасл","бренд","бремя","брешь","бридж","броня","бруто","брыло","брюхо","бубен","бугор","будка","будни",
+"буква","букет","булка","булыж","бумер","бурка","бурса","бурят","бурый","бутан","бутон","бутсы","бутыл","бывши","быстро",
+"вагон","вальс","ванна","варка","варяг","вахта","вдова","вдохи","везти","веник","венок","вепрь","верба","верно","верфь",
+"весла","весло","весна","весом","ветер","ветка","ветра","ветры","вечер","вечно","взлет","взмах","взнос","взрыв","видео",
+"видно","визит","вилка","вилла","винил","винно","винцо","вираж","вирши","вирус","виски","висок","вишня","вклад","влага",
+"влечь","внука","внуки","водач","водка","воевы","вожак","возка","возок","войти","вокал","волан","волей","волна","волны",
+"волок","волос","вольт","вопль","ворон","ворот","ворох","вояка","враки","врачи","врачу","врать","вреда","время","врозь",
+"вруны","вчера","вшито","вьюга","вьюны","вязка","вязок","вятич",
+"газон","газыр","гайка","глади","гладь","гласн","глина","гнида","гнездо",
+"гномы","гобой","говор","годик","голод","голос","голуб","гольф","гонка","гонки","горка","горном",
+"город","горох","горяч","гость","грань","грант","графа",
+"грачи","гроза",
+"груда","грудь","груша","грыжа","грязь","губка","гуляш","гусар","гусли","гуща"
+],
+      6: [
+        "паруса","письмо","грусти","огоньки","погода","доски","листик",
+        "ветрик","пальто","гранит","поляна","лампыч","глазач","помада",
+        "награда","мышьяк","пылесос","дружба","походы","пироги","поворот"
+      ]
+    };
+
+    /* ---------- очки и подсказки ---------- */
+    const SCORE_CFG = {
+      WIN_BASE: 10,          // базовые очки за победу
+      WIN_PER_REMAIN: 2,     // за каждую оставшуюся попытку
+      LOSS: -5,              // за поражение
+      HINT_PENALTY: 2,       // штраф за каждую ДОП. подсказку
+      FREE_HINTS: 1          // бесплатных подсказок (первая — 0 штрафа)
+    };
+
+    let stats = { points: 0, wins: 0, losses: 0, games: 0, streak: 0, bestStreak: 0 };
+    function loadStats() {
+      try { const raw = localStorage.getItem('rw_stats_v1'); if (raw) stats = JSON.parse(raw); } catch {}
+      updateScoreUI();
+    }
+    function saveStats() { try { localStorage.setItem('rw_stats_v1', JSON.stringify(stats)); } catch {} }
+    function updateScoreUI() {
+      const g = (id) => document.getElementById(id);
+      g('scoreTotal') && (g('scoreTotal').textContent = stats.points);
+      g('scoreStreak') && (g('scoreStreak').textContent = stats.streak);
+      g('scoreWins') && (g('scoreWins').textContent = stats.wins);
+      g('scoreLosses') && (g('scoreLosses').textContent = stats.losses);
+    }
+    function showDelta(delta) {
+      const bar = document.getElementById('scorebar');
+      if (!bar) return;
+      const b = document.createElement('span');
+      b.className = 'badge ' + (delta >= 0 ? 'plus' : 'minus');
+      b.textContent = (delta >= 0 ? '+' : '') + delta;
+      bar.appendChild(b);
+      setTimeout(()=> b.remove(), 2500);
+    }
+
+    const VOWELS = new Set(['а','е','и','о','у','ы','э','ю','я']);
+    const CONSONANTS = new Set(['б','в','г','д','ж','з','к','л','м','н','п','р','с','т','ф','х','ц','ч','ш','щ','й']);
+    let hintStage = 0; // сколько подсказок уже показано для текущего слова
+
+    function uniqueLetters(word) {
+      const seen = new Set(); const out = [];
+      for (const ch of word) if (!seen.has(ch)) { seen.add(ch); out.push(ch); }
+      return out;
+    }
+    function autoHint(word, stage) {
+      const w = word; // уже в нижнем регистре
+      const first = w[0].toUpperCase();
+      const last  = w[w.length - 1].toUpperCase();
+
+      let vowels = 0, consonants = 0;
+      const counts = {};
+      for (const ch of w) {
+        if (VOWELS.has(ch)) vowels++; else if (CONSONANTS.has(ch)) consonants++;
+        counts[ch] = (counts[ch] || 0) + 1;
+      }
+      const dup = Object.keys(counts).find(k => counts[k] > 1);
+      const uniq = uniqueLetters(w);
+
+      const variants = [
+        `Начинается на «${first}».`,
+        `Заканчивается на «${last}».`,
+        `Гласных: ${vowels}, согласных: ${consonants}.`,
+        dup ? `Есть повтор буквы «${dup.toUpperCase()}».` : `Все буквы разные.`,
+        `Есть буквы: ${uniq.slice(0, Math.min(3, uniq.length)).map(x => '«'+x.toUpperCase()+'»').join(', ')}.`
+      ];
+      return variants[Math.min(stage, variants.length - 1)];
+    }
+    function showInitialHint() {
+      hintStage = 1; // первая подсказка бесплатная
+      const txt = autoHint(targetWord, 0);
+      const el = document.getElementById('hintText');
+      if (el) el.textContent = 'Подсказка: ' + txt;
+    }
+    function nextHint() {
+      const txt = autoHint(targetWord, hintStage);
+      hintStage++;
+      const el = document.getElementById('hintText');
+      if (el) el.textContent = 'Подсказка: ' + txt;
+    }
+
+    /* ---------- игровая логика ---------- */
+    let targetWord = "";
+    let wordLength = 5;
+    let currentTry = 0;
+    let maxTries = 6;
+
+    function startGame(length) {
+      wordLength = length;
+      currentTry = 0;
+      maxTries = 6;
+      hintStage = 0;
+
+      const words = wordLists[length];
+      targetWord = words[Math.floor(Math.random() * words.length)].toLowerCase();
+
+      document.getElementById("menu").style.display = "none";
+      document.getElementById("game").style.display = "block";
+      document.getElementById("levelTitle").textContent = `Уровень: ${length} букв`;
+
+      createBoard();
+      resetGameState();
+      showInitialHint();
+    }
+
+    function createBoard() {
+      const board = document.getElementById("board");
+      board.innerHTML = "";
+      board.style.gridTemplateRows = `repeat(${maxTries}, 1fr)`;
+
+      for (let i = 0; i < maxTries; i++) {
+        const row = document.createElement("div");
+        row.classList.add("row");
+        row.style.gridTemplateColumns = `repeat(${wordLength}, 1fr)`;
+        for (let j = 0; j < wordLength; j++) {
+          const cell = document.createElement("div");
+          cell.classList.add("cell");
+          row.appendChild(cell);
+        }
+        board.appendChild(row);
+      }
+    }
+
+    function resetGameState() {
+      document.getElementById("guessInput").value = "";
+      document.getElementById("guessInput").disabled = false;
+      document.getElementById("message").textContent = "";
+      const ht = document.getElementById("hintText");
+      if (ht) ht.textContent = "";
+    }
+
+    function submitGuess() {
+      const input = document.getElementById("guessInput");
+      const guess = input.value.trim().toLowerCase();
+
+      if (guess.length !== wordLength) {
+        alert(`Введите слово из ${wordLength} букв`);
+        return;
+      }
+
+      if (!wordLists[wordLength].includes(guess)) {
+        alert("Такого слова нет в словаре");
+        return;
+      }
+
+      const row = document.getElementById("board").children[currentTry];
+      const letterCount = {};
+
+      for (const char of targetWord) {
+        letterCount[char] = (letterCount[char] || 0) + 1;
+      }
+
+      // Первая проходка: правильные позиции
+      for (let i = 0; i < wordLength; i++) {
+        const cell = row.children[i];
+        cell.textContent = guess[i] ? guess[i].toUpperCase() : '';
+        if (guess[i] === targetWord[i]) {
+          cell.classList.add("correct");
+          letterCount[guess[i]]--;
+        }
+      }
+
+      // Вторая проходка: неправильные позиции
+      for (let i = 0; i < wordLength; i++) {
+        const cell = row.children[i];
+        if (!cell.classList.contains("correct")) {
+          if (targetWord.includes(guess[i]) && letterCount[guess[i]] > 0) {
+            cell.classList.add("present");
+            letterCount[guess[i]]--;
+          } else {
+            cell.classList.add("absent");
+          }
+        }
+      }
+
+      if (guess === targetWord) {
+        // очки за победу
+        const triesUsed = currentTry + 1;
+        const remaining = Math.max(0, maxTries - triesUsed);
+        const paidHints = Math.max(0, hintStage - SCORE_CFG.FREE_HINTS);
+        let delta = SCORE_CFG.WIN_BASE + remaining * SCORE_CFG.WIN_PER_REMAIN - paidHints * SCORE_CFG.HINT_PENALTY;
+        if (delta < 1) delta = 1;
+
+        stats.points += delta;
+        stats.wins++; stats.games++; stats.streak++; stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
+        saveStats(); updateScoreUI(); showDelta(delta);
+
+        document.getElementById("message").textContent = `🎉 Победа! +${delta} очков (подсказок: ${paidHints})`;
+        document.getElementById("guessInput").disabled = true;
+        animateVictory(row);
+        return;
+      }
+
+      currentTry++;
+      if (currentTry === maxTries) {
+        const delta = SCORE_CFG.LOSS;
+        stats.points += delta;
+        stats.losses++; stats.games++; stats.streak = 0;
+        saveStats(); updateScoreUI(); showDelta(delta);
+
+        document.getElementById("message").textContent = `😢 Вы проиграли. Слово: "${targetWord.toUpperCase()}" (${delta} очков)`;
+        document.getElementById("guessInput").disabled = true;
+      }
+
+      input.value = "";
+    }
+
+    function restartGame() {
+      document.getElementById("menu").style.display = "block";
+      document.getElementById("game").style.display = "none";
+    }
+
+    function animateVictory(row) {
+      for (let i = 0; i < row.children.length; i++) {
+        const cell = row.children[i];
+        cell.style.animation = "bounce 0.6s ease " + i * 0.1 + "s forwards";
+      }
+    }
+
+    document.getElementById("guessInput").addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        submitGuess();
+      }
+    });
+
+    // Загружаем статистику при открытии
+    window.addEventListener('DOMContentLoaded', loadStats);
+  </script>
+</body>
+</html>
