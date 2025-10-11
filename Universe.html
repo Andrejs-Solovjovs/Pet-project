@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Интерактивная 3D‑карта Вселенной — переписанная</title>
+  <style>
+    :root{
+      --bg:#05060a;
+      --panel:#0b0e14cc;
+      --text:#e6edf3;
+      --muted:#9aa4ad;
+      --accent:#8bd3ff;
+      --accent-2:#b892ff;
+      --ring:#e9dfc5;
+      --glow: 0 0 30px rgba(139,211,255,.35), 0 0 80px rgba(184,146,255,.18);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,"Helvetica Neue",Arial,sans-serif; color:var(--text);
+      background:radial-gradient(1200px 700px at 70% 10%, #0b0f1a 0%, #06070c 50%, #04050a 100%), var(--bg);
+      overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    }
+
+    /* --- HUD --- */
+    .hud{ position:fixed; inset:16px auto auto 16px; display:flex; gap:10px; align-items:center; z-index:15; flex-wrap:wrap }
+    .badge{ padding:8px 12px; border-radius:999px; backdrop-filter: blur(8px); background:var(--panel); border:1px solid #1b2230; box-shadow:0 4px 18px rgba(0,0,0,.35); font-size:14px }
+    .badge b{ color:var(--accent)}
+    .controls{ display:flex; gap:8px }
+    .btn{ display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:12px; border:1px solid #1b2230; background:#121826; color:#d6e2ee; cursor:pointer }
+    .btn:active{ transform:translateY(1px) }
+    .toggle{ display:inline-flex; gap:6px; align-items:center; padding:8px 12px; border-radius:12px; border:1px solid #1b2230; background:#121826 }
+
+    /* --- Legend --- */
+    .legend{ position:fixed; left:16px; bottom:16px; max-width:460px; padding:14px 16px; border-radius:16px; background:var(--panel); border:1px solid #1b2230; box-shadow:0 8px 28px rgba(0,0,0,.5); line-height:1.45; z-index:12 }
+    .legend h3{ margin:.2rem 0 .4rem; font-size:14px; letter-spacing:.04em; text-transform:uppercase; color:#cbd6e2 }
+    .legend p{ margin:.25rem 0; color:var(--muted); font-size:14px }
+    .legend kbd{ background:#0f1420; border:1px solid #1b2230; padding:.15rem .5rem; border-radius:6px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.85em; color:#cfe7ff }
+
+    /* --- Info panel --- */
+    .panel{ position:fixed; top:0; right:0; width:min(380px, 90vw); height:100%; background:linear-gradient(180deg, #0b0e14f2, #0b0e14d0 60%, #0b0e14f2); border-left:1px solid #1b2230; transform:translateX(100%); transition:transform .35s ease; z-index:14; display:flex; flex-direction:column }
+    .panel.open{ transform:translateX(0) }
+    .panel header{ display:flex; align-items:center; justify-content:space-between; padding:16px; border-bottom:1px solid #1b2230 }
+    .panel header h2{ margin:0; font-size:18px }
+    .panel .content{ padding:16px; overflow:auto }
+    .pill{ display:inline-block; padding:.25rem .55rem; border-radius:999px; border:1px solid #1b2230; background:#0f1420; color:#cfe7ff; font-size:12px; margin-right:6px }
+    .close{ cursor:pointer; border:1px solid #1b2230; background:#121826; color:#cbd6e2; border-radius:10px; padding:6px 10px }
+
+    /* --- 3D Stage --- */
+    .stage{ position:absolute; inset:0; perspective: 1200px; perspective-origin: 50% 50%; }
+    .universe{ position:absolute; inset:0; transform-style:preserve-3d; transform: translateZ(0) rotateX(var(--rx,-10deg)) rotateY(var(--ry,0deg)) scale(var(--sc,1)); transition: transform .05s linear; }
+
+    /* Stars */
+    .stars{ position:absolute; inset:-10000px; transform-style:preserve-3d; }
+    .star{ position:absolute; width:2px; height:2px; border-radius:50%; background:#cfe7ff; box-shadow:var(--glow); opacity:.9 }
+
+    /* Nodes */
+    .node{ position:absolute; transform-style:preserve-3d; cursor:pointer;}
+    .node:focus-visible .label{ outline:2px solid var(--accent) }
+
+    /* Planets */
+    .planet{ position:absolute; left:0; top:0; transform-style:preserve-3d; width:var(--size,80px); height:var(--size,80px); margin-left:calc(var(--size)/-2); margin-top:calc(var(--size)/-2); border-radius:50%;
+      background: radial-gradient(120% 120% at 30% 30%, var(--c1) 0%, var(--c2) 55%, #0b0e14 110%);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.05) inset, 0 0 45px rgba(139,211,255,.15);
+      backface-visibility:hidden;
+    }
+    .planet::after{ content:""; position:absolute; inset:-12%; border-radius:50%; box-shadow: inset -30px -30px 80px rgba(0,0,0,.45) }
+
+    /* Saturn ring */
+    .ring{ position:absolute; width:calc(var(--size)*1.9); height:calc(var(--size)*1.1); margin-left:calc(var(--size)*-0.95); margin-top:calc(var(--size)*-0.55); border-radius:50%; border:6px solid rgba(233,223,197,.55); border-left-width:12px; border-right-width:12px; filter:blur(.2px) contrast(1.05); transform: rotateX(68deg) }
+
+    /* Label */
+    .label{ position:absolute; left:50%; top: calc(50% + var(--size,80px)/2 + 12px); transform: translateX(-50%); padding:4px 8px; border-radius:8px; font-size:12px; color:#cfe7ff; background:#0f1420b3; border:1px solid #1b2230; white-space:nowrap; backdrop-filter: blur(6px); opacity:.9 }
+
+    /* Orbits */
+    .orbit{ position:absolute; left:-50%; top:-50%; width:var(--orbit,600px); height:var(--orbit,600px); border-radius:50%; border:1px dashed rgba(139,211,255,.12); transform: rotateX(70deg) }
+
+    .node:hover .planet{ box-shadow:0 0 0 1px rgba(255,255,255,.08) inset, 0 0 60px rgba(139,211,255,.35) }
+
+    .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0 }
+
+    @media (max-width: 760px){
+      .legend{ display:none }
+      .panel{ width:100% }
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="badge">🎛️ <b>Поворот</b>: ЛКМ + потянуть</div>
+    <div class="badge">🔍 <b>Зум</b>: колесо мыши</div>
+    <div class="badge">🎯 <b>Щелчок</b>: инфо об объекте</div>
+    <div class="controls">
+      <button id="reset" class="btn" title="Сброс камеры">↺ Сброс</button>
+      <label class="toggle" title="Автоповорот сцены"><input id="autorotate" type="checkbox"> авто‑поворот</label>
+      <label class="toggle" title="Анимация орбит"><input id="orbitanim" type="checkbox"> анимация орбит</label>
+    </div>
+  </div>
+
+  <aside id="info" class="panel" aria-live="polite" aria-label="Информация об объекте">
+    <header>
+      <h2 id="panel-title">Объект</h2>
+      <button class="close" id="close-panel" title="Закрыть">Закрыть</button>
+    </header>
+    <div class="content" id="panel-content">
+      <div class="pill">3D‑карта</div>
+      <div class="pill">HTML + CSS + JS</div>
+      <p style="color:var(--muted)">Кликни по планете/узлу, чтобы открыть карточку. Колесо — зум, мышь — поворот. Все элементы автоматически «смотрят» на камеру, поэтому остаются круглыми.</p>
+    </div>
+  </aside>
+
+  <div class="legend">
+    <h3>Подсказки</h3>
+    <p>• Тяни по пустому месту — поворот. Используй <kbd>Shift</kbd> при прокрутке для плавного зума.</p>
+    <p>• Нажми на объект, чтобы сфокусироваться. Кнопка «Сброс» вернёт исходный вид.</p>
+  </div>
+
+  <main class="stage" id="stage" aria-label="3D сцена">
+    <div class="universe" id="universe" role="group" aria-describedby="scene-desc">
+      <p id="scene-desc" class="sr-only">Трёхмерная сцена со звёздами и планетами. Управление мышью и колёсиком. Планеты биллбордятся к камере.</p>
+      <div class="stars" id="stars" aria-hidden="true"></div>
+    </div>
+  </main>
+
+  <script>
+    // ====== ДАННЫЕ СЦЕНЫ ======
+    const OBJECTS = [
+      { id:"sol", name:"Солнце", size:160, color1:"#ffd56b", color2:"#ff7b00", pos:[0,0,0], orbit:0,
+        about:"Звезда главной последовательности. Источник света для всей сцены.", facts:["Тип: G2V","Радиус: 696 340 км","Возраст: ~4.6 млрд лет"] },
+      { id:"mer", name:"Меркурий", size:38, color1:"#b9b2a8", color2:"#6c625a", pos:[220, -60, -120], orbit:480,
+        about:"Самая близкая к Солнцу планета.", facts:["Период: 88 дней","Спутники: нет"] },
+      { id:"ven", name:"Венера", size:52, color1:"#e9c88f", color2:"#8a6d46", pos:[-300, 40, -180], orbit:640,
+        about:"Плотная атмосфера и парниковый эффект.", facts:["День дольше года","Спутники: нет"] },
+      { id:"ter", name:"Земля", size:56, color1:"#6ab8ff", color2:"#2877b7", pos:[-100, -80, 260], orbit:720,
+        about:"Наш дом с жидкой водой и жизнью.", facts:["1 Луна","Период: 365 дней"] },
+      { id:"mar", name:"Марс", size:46, color1:"#ff9f6b", color2:"#9d3f2a", pos:[360, 120, 320], orbit:900,
+        about:"Красная планета с полярными шапками.", facts:["Спутники: Фобос, Деймос"] },
+      { id:"jup", name:"Юпитер", size:120, color1:"#e0c9a6", color2:"#8f6b4a", pos:[-560, 80, -520], orbit:1300,
+        about:"Газовый гигант с Большим красным пятном.", facts:["~80 спутников","Самая быстрая ротация"] },
+      { id:"sat", name:"Сатурн", size:102, color1:"#f1e3c1", color2:"#9f855f", pos:[720, -140, -260], orbit:1600,
+        about:"Известен своими кольцами.", facts:["Кольца изо льда и пыли"] , ring:true},
+      { id:"ura", name:"Уран", size:76, color1:"#9fe7ff", color2:"#4fb2cc", pos:[-980, -260, 420], orbit:2000,
+        about:"Лёд‑гигант, вращение «на боку».", facts:["Холодная стратосфера"] },
+      { id:"nep", name:"Нептун", size:72, color1:"#7bb1ff", color2:"#2949a6", pos:[1080, 220, 680], orbit:2300,
+        about:"Самая дальняя планета.", facts:["Сильные ветры"] },
+      { id:"neb1", name:"Туманность Ориона", size:140, color1:"#b892ff", color2:"#8bd3ff", pos:[-1500, 600, -1200], orbit:0,
+        about:"OB‑ассоциация, активное звёздообразование.", facts:["M42","~1344 св. лет"] },
+      { id:"neb2", name:"Плеяды", size:110, color1:"#b6d8ff", color2:"#6aa6ff", pos:[1400, -400, 1000], orbit:0,
+        about:"Рассеянное скопление в Тельце.", facts:["M45","~444 св. лет"] },
+    ];
+
+    // ====== ЭЛЕМЕНТЫ DOM ======
+    const stage = document.getElementById('stage');
+    const universe = document.getElementById('universe');
+    const starsWrap = document.getElementById('stars');
+    const panel = document.getElementById('info');
+    const panelTitle = document.getElementById('panel-title');
+    const panelContent = document.getElementById('panel-content');
+
+    // ====== СОЗДАНИЕ СЦЕНЫ ======
+    // Орбиты
+    OBJECTS.filter(o=>o.orbit>0).forEach(o=>{
+      const orbit = document.createElement('div');
+      orbit.className = 'orbit';
+      orbit.style.setProperty('--orbit', o.orbit + 'px');
+      orbit.style.transform = `rotateX(70deg) rotateZ(${(Math.random()*360)|0}deg)`;
+      orbit.dataset.rotateZ = String(Math.random()*360);
+      universe.appendChild(orbit);
+    });
+
+    // Узлы
+    OBJECTS.forEach(o=>{
+      const node = document.createElement('div');
+      node.className = 'node';
+      node.style.transform = `translate3d(${o.pos[0]}px, ${o.pos[1]}px, ${o.pos[2]}px)`;
+      node.dataset.id = o.id; node.tabIndex = 0;
+
+      const planet = document.createElement('div');
+      planet.className = 'planet';
+      planet.style.setProperty('--size', o.size+'px');
+      planet.style.setProperty('--c1', o.color1);
+      planet.style.setProperty('--c2', o.color2);
+
+      if(o.ring){
+        const ring = document.createElement('div'); ring.className='ring'; node.appendChild(ring);
+      }
+
+      const label = document.createElement('div'); label.className='label'; label.textContent = o.name;
+      const sr = document.createElement('span'); sr.className='sr-only'; sr.textContent = `Объект ${o.name}. Нажмите, чтобы открыть информацию.`;
+
+      node.appendChild(planet); node.appendChild(label); node.appendChild(sr); universe.appendChild(node);
+    });
+
+    // Звёзды
+    const STAR_COUNT = 600;
+    for(let i=0;i<STAR_COUNT;i++){
+      const s = document.createElement('div'); s.className='star';
+      const x = (Math.random()*6000 - 3000)|0;
+      const y = (Math.random()*4000 - 2000)|0;
+      const z = (Math.random()*6000 - 3000)|0;
+      const scale = Math.random()*1.8 + .4;
+      s.style.transform = `translate3d(${x}px, ${y}px, ${z}px) scale(${scale})`;
+      s.style.opacity = String(Math.random()*0.9 + 0.1);
+      starsWrap.appendChild(s);
+    }
+
+    // ====== КАМЕРА ======
+    let rotX = -10, rotY = 0, scale = 1; // начальные
+    let dragging = false, lastX = 0, lastY = 0;
+    const clamp = (v, min, max)=> Math.min(Math.max(v, min), max);
+
+    function applyTransform(){
+      universe.style.setProperty('--rx', rotX+'deg');
+      universe.style.setProperty('--ry', rotY+'deg');
+      universe.style.setProperty('--sc', String(scale));
+      faceToCamera();
+    }
+
+    // Биллбординг: планеты всегда смотрят на камеру
+    function faceToCamera(){
+      const planets = universe.querySelectorAll('.node .planet, .node .ring');
+      planets.forEach(el=>{
+        el.style.transform = `rotateX(${-rotX}deg) rotateY(${-rotY}deg)`;
+      });
+    }
+
+    window.addEventListener('mousedown', (e)=>{
+      if((e.target.closest('.panel') || e.target.closest('.btn') || e.target.closest('.toggle'))) return;
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+    });
+    window.addEventListener('mousemove', (e)=>{
+      if(!dragging) return;
+      const dx = e.clientX - lastX; const dy = e.clientY - lastY;
+      rotY += dx * 0.15; rotX = clamp(rotX - dy * 0.15, -89, 89);
+      lastX = e.clientX; lastY = e.clientY; applyTransform();
+    });
+    window.addEventListener('mouseup', ()=> dragging=false);
+
+    window.addEventListener('wheel', (e)=>{
+      const step = e.shiftKey ? 0.02 : 0.08;
+      scale = clamp(scale - Math.sign(e.deltaY) * step, 0.2, 3.5);
+      applyTransform();
+    }, {passive:true});
+
+    document.getElementById('reset').addEventListener('click', ()=>{
+      rotX = -10; rotY = 0; scale = 1; applyTransform();
+    });
+
+    // ====== ПАНЕЛЬ ======
+    const closePanelBtn = document.getElementById('close-panel');
+    closePanelBtn.addEventListener('click', ()=> panel.classList.remove('open'));
+
+    function openPanelById(id){
+      const obj = OBJECTS.find(o=>o.id===id); if(!obj) return;
+      panelTitle.textContent = obj.name;
+      panelContent.innerHTML = `
+        <div class="pill">Размер: ${obj.size}px</div>
+        ${obj.orbit?`<div class="pill">Орбита ≈ ${obj.orbit}px</div>`:''}
+        ${obj.ring?`<div class="pill">Кольца</div>`:''}
+        <p style="margin-top:.6rem">${obj.about}</p>
+        <ul style="color:var(--muted); line-height:1.7; padding-left:1.2rem">
+          ${obj.facts.map(f=>`<li>${f}</li>`).join('')}
+        </ul>`;
+      panel.classList.add('open');
+    }
+
+    universe.addEventListener('click', (e)=>{
+      const node = e.target.closest('.node'); if(node) openPanelById(node.dataset.id);
+    });
+
+    // ====== АВТОПОВОРОТ И АНИМАЦИЯ ОРБИТ ======
+    const autorotate = document.getElementById('autorotate');
+    const orbitanim = document.getElementById('orbitanim');
+    let raf = 0; let t = 0;
+
+    function loop(){
+      if(autorotate.checked){ rotY += 0.05; }
+      if(orbitanim.checked){
+        t += 0.0025;
+        universe.querySelectorAll('.orbit').forEach((o,i)=>{
+          const base = parseFloat(o.dataset.rotateZ || '0');
+          o.style.transform = `rotateX(70deg) rotateZ(${base + Math.sin(t + i)*3}deg)`;
+        });
+      }
+      applyTransform();
+      raf = requestAnimationFrame(loop);
+    }
+    autorotate.addEventListener('change', ()=>{ if(autorotate.checked && !raf) raf = requestAnimationFrame(loop); });
+    orbitanim.addEventListener('change', ()=>{ if(!raf && (autorotate.checked || orbitanim.checked)) raf = requestAnimationFrame(loop); });
+
+    // ====== СТАРТ ======
+    openPanelById('ter');
+    applyTransform();
+  </script>
+</body>
+</html>
