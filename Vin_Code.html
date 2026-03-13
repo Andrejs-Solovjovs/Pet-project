@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>VIN Mini Decoder</title>
+  <style>
+    :root { --bg:#0b1020; --card:#111936; --muted:#aab3d6; --text:#eef2ff; --bad:#ff5a7a; --ok:#35d07f; --line: rgba(255,255,255,.10); }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background: radial-gradient(1000px 600px at 20% 0%, #1b2a6a 0%, var(--bg) 60%); color:var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 48px; }
+    .header { display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    h1 { margin:0; font-size: 22px; letter-spacing: .2px; }
+    .hint { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.4; }
+    .card { background: rgba(17,25,54,.86); border: 1px solid var(--line); border-radius: 18px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.35); backdrop-filter: blur(6px); }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    input[type="text"]{
+      width:100%; padding: 14px 14px; border-radius: 14px; border: 1px solid var(--line);
+      background: rgba(255,255,255,.06); color: var(--text); outline: none;
+      font-size: 16px; letter-spacing: .5px;
+    }
+    input[type="text"]::placeholder { color: rgba(238,242,255,.45); }
+    button {
+      padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(53,208,127,.95), rgba(33,160,96,.95));
+      color: #06120b; font-weight: 700; cursor: pointer; white-space: nowrap;
+      box-shadow: 0 12px 28px rgba(53,208,127,.18);
+    }
+    button.secondary{ background: rgba(255,255,255,.06); color: var(--text); font-weight: 600; box-shadow: none; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .status { font-size: 13px; color: var(--muted); display:flex; gap:10px; align-items:center; }
+    .pill { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); }
+    .pill.ok { border-color: rgba(53,208,127,.35); color: var(--ok); }
+    .pill.bad { border-color: rgba(255,90,122,.35); color: var(--bad); }
+    .spin { width: 14px; height:14px; border-radius: 999px; border: 2px solid rgba(255,255,255,.22); border-top-color: rgba(255,255,255,.85); animation: s .8s linear infinite; }
+    @keyframes s { to { transform: rotate(360deg); } }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .kpi { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    @media (max-width: 520px) { .kpi { grid-template-columns: 1fr; } }
+    .k { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.04); }
+    .k .lbl { font-size: 12px; color: var(--muted); }
+    .k .val { margin-top: 6px; font-size: 15px; font-weight: 650; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1>VIN мини-декодер</h1>
+        <div class="hint">
+        </div>
+      </div>
+      <div class="status" id="status"><span class="pill">Готово</span></div>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="card">
+      <div class="row">
+        <input id="vin" type="text" class="mono" placeholder="Например: WVWZZZAUZJW270717" maxlength="17" autocomplete="off" />
+        <button id="btn">Проверить</button>
+        <button id="btnClear" class="secondary">Очистить</button>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        * Буквы <span class="mono">I O Q</span> в VIN не используются.
+      </div>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="card">
+      <div class="kpi" id="kpi"></div>
+    </div>
+  </div>
+
+<script>
+  const elVin = document.getElementById("vin");
+  const elBtn = document.getElementById("btn");
+  const elBtnClear = document.getElementById("btnClear");
+  const elStatus = document.getElementById("status");
+  const elKpi = document.getElementById("kpi");
+
+  // Мини-словарь WMI (расширяй как нужно)
+  // Ключ = первые 3 символа VIN
+  const WMI = {
+    "WVW": { make: "Volkswagen", country: "Germany" },
+    "WAU": { make: "Audi", country: "Germany" },
+    "WBA": { make: "BMW", country: "Germany" },
+    "WBS": { make: "BMW M", country: "Germany" },
+    "WDB": { make: "Mercedes-Benz", country: "Germany" },
+    "WDD": { make: "Mercedes-Benz", country: "Germany" },
+    "VF1": { make: "Renault", country: "France" },
+    "VR3": { make: "Peugeot", country: "France" },
+    "VR7": { make: "Citroën", country: "France" },
+    "VSS": { make: "SEAT", country: "Spain" },
+    "ZFA": { make: "Fiat", country: "Italy" },
+    "ZAR": { make: "Alfa Romeo", country: "Italy" },
+    "YV1": { make: "Volvo", country: "Sweden" },
+    "YS3": { make: "Saab", country: "Sweden" },
+    "TMB": { make: "Škoda", country: "Czechia" },
+    "TRU": { make: "Audi (Quattro GmbH)", country: "Germany" }
+  };
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    }[c]));
+  }
+
+  function normalizeVin(v) { return (v || "").trim().toUpperCase(); }
+  function vinFormatValid(vin) { return /^[A-HJ-NPR-Z0-9]{17}$/.test(vin); }
+
+  function setStatus(type, text, spinning=false) {
+    const cls = type === "ok" ? "pill ok" : type === "bad" ? "pill bad" : "pill";
+    elStatus.innerHTML = `
+      ${spinning ? '<span class="spin" aria-hidden="true"></span>' : ""}
+      <span class="${cls}">${escapeHtml(text)}</span>
+    `;
+  }
+
+  function isMeaningful(v) {
+    if (v === null || v === undefined) return false;
+    const s = String(v).trim();
+    if (s === "") return false;
+    const bad = ["0","null","undefined","not applicable","n/a","na"];
+    return !bad.includes(s.toLowerCase());
+  }
+
+  function kv(label, value) {
+    const safe = isMeaningful(value) ? String(value) : "—";
+    return `<div class="k"><div class="lbl">${escapeHtml(label)}</div><div class="val">${escapeHtml(safe)}</div></div>`;
+  }
+
+  function renderMini(out) {
+    elKpi.innerHTML = [
+      kv("VIN", out.vin),
+      kv("Производитель", out.make),
+      kv("Страна/регион", out.country),
+      kv("Тип ТС", out.vehicleType),
+      kv("Модель", out.model),
+      kv("Год", out.year),
+      kv("Кузов", out.bodyClass),
+      kv("Двигатель", out.engine),
+      kv("Топливо", out.fuel)
+    ].join("");
+  }
+
+  async function decodeVinValues(vin) {
+    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(vin)}?format=json`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  }
+
+  function setInputState() {
+    const vin = normalizeVin(elVin.value);
+    elVin.value = vin;
+
+    if (vin.length === 0) {
+      elVin.style.borderColor = "rgba(255,255,255,.10)";
+      setStatus("neutral", "Готово");
+      elBtn.disabled = true;
+      return;
+    }
+    if (vin.length < 17) {
+      elVin.style.borderColor = "rgba(255,255,255,.10)";
+      setStatus("neutral", `Ввод: ${vin.length}/17`);
+      elBtn.disabled = true;
+      return;
+    }
+    if (!vinFormatValid(vin)) {
+      elVin.style.borderColor = "rgba(255,90,122,.55)";
+      setStatus("bad", "Некорректный VIN");
+      elBtn.disabled = true;
+      return;
+    }
+    elVin.style.borderColor = "rgba(53,208,127,.55)";
+    setStatus("ok", "VIN валиден");
+    elBtn.disabled = false;
+  }
+
+  function wmiLookup(vin) {
+    const key = vin.slice(0,3);
+    return WMI[key] || { make: null, country: null };
+  }
+
+  function buildOutput(vin, row) {
+    const wmi = wmiLookup(vin);
+
+    // Производитель: сначала NHTSA Make, иначе WMI
+    const make = isMeaningful(row?.Make) ? row.Make : wmi.make;
+
+    // Страна: сначала PlantCountry (если есть), иначе WMI country
+    // (PlantCountry — страна завода, WMI — страна регистрации производителя/региона)
+    const country = isMeaningful(row?.PlantCountry) ? row.PlantCountry : wmi.country;
+
+    const vehicleType = row?.VehicleType || null;
+    const model = row?.Model || null;
+    const year = row?.ModelYear || null;
+    const bodyClass = row?.BodyClass || null;
+
+    const cyl = isMeaningful(row?.EngineCylinders) ? row.EngineCylinders : null;
+    const disp = isMeaningful(row?.DisplacementL) ? row.DisplacementL : null;
+
+    let engine = null;
+    if (cyl && disp) engine = `${cyl} cyl, ${disp} L`;
+    else if (cyl) engine = `${cyl} cyl`;
+    else if (disp) engine = `${disp} L`;
+
+    const fuel = row?.FuelTypePrimary || null;
+
+    return { vin, make, country, vehicleType, model, year, bodyClass, engine, fuel };
+  }
+
+  async function runLookup() {
+    const vin = normalizeVin(elVin.value);
+    if (!vinFormatValid(vin)) return;
+
+    elBtn.disabled = true;
+    setStatus("neutral", "Запрос…", true);
+
+    try {
+      const data = await decodeVinValues(vin);
+      const row = data?.Results?.[0] || {};
+      const out = buildOutput(vin, row);
+
+      renderMini(out);
+
+      const errorCode = String(row?.ErrorCode || "").trim();
+      if (errorCode && errorCode !== "0") setStatus("bad", "Данные частично");
+      else setStatus("ok", "Готово");
+    } catch (e) {
+      renderMini({ vin, make:null, country:null, vehicleType:null, model:null, year:null, bodyClass:null, engine:null, fuel:null });
+      setStatus("bad", "Ошибка запроса");
+    } finally {
+      setInputState();
+    }
+  }
+
+  elVin.addEventListener("input", setInputState);
+  elVin.addEventListener("keydown", (e) => { if (e.key === "Enter" && !elBtn.disabled) runLookup(); });
+  elBtn.addEventListener("click", runLookup);
+
+  elBtnClear.addEventListener("click", () => {
+    elVin.value = "";
+    elKpi.innerHTML = "";
+    setInputState();
+    elVin.focus();
+  });
+
+  setInputState();
+
+  // demo:
+  // elVin.value = "WVWZZZAUZJW270717"; setInputState(); runLookup();
+</script>
+</body>
+</html>
